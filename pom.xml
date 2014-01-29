@@ -87,6 +87,12 @@
         <scope>provided</scope>
       </dependency>
       <dependency>
+        <groupId>org.kiji.schema</groupId>
+        <artifactId>kiji-schema-extras</artifactId>
+        <version>${kiji-schema.version}</version>
+        <scope>provided</scope>
+      </dependency>
+      <dependency>
         <groupId>org.kiji.express</groupId>
         <artifactId>kiji-express</artifactId>
         <version>${kiji-express.version}</version>

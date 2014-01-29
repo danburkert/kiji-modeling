@@ -1,0 +1,17 @@
+#org.kiji.modeling.conf/express-job {
+  :name "learning-algo-step-1"
+  :job-class "com.myCompany.MyLearningAlgo1"
+  :dependencies #{:non-string}
+  :options {
+    :weights [1, 2, 99.23, 98.376]
+  }
+}
+
+#org.kiji.modeling/express-job {
+  :name "learning-algo-step-2"
+  :job-class "com.myCompany.MyLearningAlgo2"
+  :dependencies #{"learning-algo-step-1"}
+  :options {
+    :stop-words ["the" "an" "and" "a"]
+  }
+}
