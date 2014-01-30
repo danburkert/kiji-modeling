@@ -11,16 +11,6 @@ object EdnConf {
     val source = Source.fromFile("conf.edn")
     val toPrint = parsing.parse(source.bufferedReader()).toList.first
 
-//    val toPrint = parsing.parse("#org.kiji.modeling.conf/express-job{:name \"foobar\" :job-class \"foo\" :dependencies #{\"foo\" \"bar\"} :options {}}")
-//    val toPrint = parsing.parse("#org.kiji.modeling.conf/express-job[1 2 3]").first
-//    val toPrint = validation.validateType[Map[String, String]](List(1, 2, 3))
-
-//    val mapValidator = validateMap[Int, CharSequence](
-//        required(1 -> validateType[CharSequence]),
-//        optional(4 -> validateType[Utf8])) _
-
-//    val toPrint = mapValidator(SortedMap(1 -> "foo", 2 -> "bar", 3 -> "baz", 4 -> "foo"))
-
     println(toPrint)
   }
 
@@ -182,16 +172,21 @@ object EdnConf {
      * or interior node (Tuple2[String, ValidationError] or List[ValidationError]).
      */
     sealed trait ValidationError {
+      def children: Option[ValidationError] = None
       def print: List[String]
     }
     implicit def StringValidationError(error: String): ValidationError = new ValidationError {
       override def print: List[String] = List("- " + error)
+      override def toString: String = error
     }
     implicit def TupleValidationError[T <% ValidationError](tuple: (String, T)): ValidationError = new ValidationError {
       override def print: List[String] = tuple._1.print ++ tuple._2.print.map(s => '\t' + s)
+      override def children: Option[ValidationError] = Some(tuple._2)
+      override def toString: String = tuple.toString()
     }
     implicit def ListValidationError[T <% ValidationError](list: List[T]): ValidationError = new ValidationError {
       override def print: List[String] = list.flatMap(_.print)
+      override def toString: String = list.toString()
     }
     class ValidationException(message: String) extends Exception {
       override def getMessage: String = message
@@ -279,7 +274,7 @@ object EdnConf {
      * validates specified entries in the map.
      */
     def validateMap[K : Manifest, V : Manifest]
-    (keyValidators: (K, (Option[V] => Either[ValidationError, V]))*)
+      (keyValidators: (K, (Option[V] => Either[ValidationError, V]))*)
       (obj: Any): Either[ValidationError, Map[K, V]] = {
 
       // Check that the object is a Map
@@ -297,12 +292,33 @@ object EdnConf {
           .right.flatMap { _ =>
             // We know the map is well-typed, so we can cast
             val typedMap: Map[K, V] = map.asInstanceOf[Map[K, V]]
-            flatten(keyValidators.map { case (key, validator) => validator(typedMap.get(key)) },
-                    "Map contains invalid entries:")
+            flatten(
+              keyValidators.map {
+                case (key, validator) =>
+                  validator(typedMap.get(key))
+                    .left.map[ValidationError](error => "Invalid value for key %s:".format(key) -> error) },
+              "Map contains invalid entries:")
               .right.map(_ => typedMap)
         }
       }
     }
+
+    def validateTaggedRecord[K : Manifest, V : Manifest](tag: Tag, fieldValidators: (K, (Option[V] => Either[ValidationError, V]))*)(obj: Any): Either[ValidationError, Map[K, V]] = {
+      // Check that the body is a map
+      validateMap[Any, Any]()(obj)
+        .left.map[ValidationError](_ => "Invalid %s: body must be a map.".format(tag))
+        .right.flatMap { map: Map[Any, Any] =>
+          // Check that the map has a :name field containing a string
+          validateMap[Any, Any](required (NameKey -> validateType[String]))(map)
+            .left.map[ValidationError](error => "Invalid %s: :name field must contain a string.".format(tag))
+            .right.flatMap { _ =>
+              val name = map(NameKey)
+              // Check that the 'record' has all of the required fields and that they validate
+              validateMap[K, V](fieldValidators:_*)(obj)
+                .left.map[ValidationError](error => "Invalid fields in %s named %s:".format(tag, name) -> error.children.get)
+            }
+        }
+      }
 
     val NameKey = keyword("name")
     val JobClassKey = keyword("job-class")
@@ -312,28 +328,27 @@ object EdnConf {
     def validateExpressJob(tag: Tag, obj: Any): ExpressJob = {
       require(tag == ExpressJob.Tag) // Sanity check
 
-      val validation = validateMap[Symbol, Any](
+      validate_! (validateTaggedRecord[Symbol, Any](
+          tag,
           required(NameKey -> validateType[String]),
           required(JobClassKey -> validateType[String]),
           required(DependenciesKey -> validateSet[String]()),
           required(OptionsKey -> validateMap[Any, Any]())
-          )(obj)
-        .left.map[ValidationError](error => "Invalid express-job: " -> error)
+      )(obj)
         .right.map { map =>
           ExpressJob(
             map(NameKey).asInstanceOf[String],
             map(JobClassKey).asInstanceOf[String],
             map(DependenciesKey).asInstanceOf[Set[String]],
             map(OptionsKey).asInstanceOf[Map[Any, Any]])
-      }
-      validate_!(validation)
+        })
     }
 
     def required[K, V](kv: (K, V => Either[ValidationError, V])): (K, (Option[V] => Either[ValidationError, V])) = {
       val (key, validator) = kv
       key -> {
         case Some(v) => validator(v)
-        case None => Left("Required key %s missing.".format(key))
+        case None => Left("Required key %s is missing.".format(key))
       }
     }
 

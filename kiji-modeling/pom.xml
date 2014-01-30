@@ -103,7 +103,7 @@
     <dependency>
       <groupId>log4j</groupId>
       <artifactId>log4j</artifactId>
-      <scope>provided</scope>
+      <!--<scope>provided</scope>-->
     </dependency>
     <dependency>
       <groupId>org.kiji.schema-shell</groupId>
@@ -118,6 +118,11 @@
       <version>${kiji-schema.version}</version>
       <type>test-jar</type>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.kiji.schema</groupId>
+      <artifactId>kiji-schema-extras</artifactId>
+      <version>${kiji-schema.version}</version>
     </dependency>
     <dependency>
       <groupId>org.kiji.express</groupId>
